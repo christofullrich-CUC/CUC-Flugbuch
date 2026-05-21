@@ -74,7 +74,7 @@
         <label>Flugplatz</label>
         <select v-model="selectedLocation" class="input-field">
           <option value="" disabled>Platz auswählen...</option>
-          <option v-for="loc in locations" :key="loc.id" :value="loc">{{ loc.name }}</option>
+          <option v-for="loc in activePilotLocations" :key="loc.id" :value="loc">{{ loc.name }}</option>
         </select>
         
         <button type="button" @click="fetchLiveWeather" class="weather-btn">
@@ -90,7 +90,7 @@
       <div class="form-section">
         <label>Fluggerät</label>
         <div class="aircraft-grid">
-          <div v-for="air in aircrafts" :key="air.id" 
+          <div v-for="air in activePilotAircrafts" :key="air.id" 
                :class="['aircraft-card', { active: selectedAircraftId === air.id }]" 
                @click="selectedAircraftId = air.id">
             <div class="aircraft-name">{{ air.name }}</div>
@@ -159,7 +159,7 @@
 
     <div class="settings-card">
       <h3>Mein Hangar</h3>
-      <div v-for="air in aircrafts" :key="air.id" class="list-item" style="padding: 6px 0;">
+      <div v-for="air in activePilotAircrafts" :key="air.id" class="list-item" style="padding: 6px 0;">
         <span><strong>{{ air.name }}</strong> ({{ air.category }})</span>
         <button @click="deleteAircraft(air.id)" class="delete-btn">X</button>
       </div>
@@ -178,7 +178,7 @@
 
     <div class="settings-card">
       <h3>Meine Flugplätze</h3>
-      <div v-for="loc in locations" :key="loc.id" class="list-item" style="padding: 6px 0;">
+      <div v-for="loc in activePilotLocations" :key="loc.id" class="list-item" style="padding: 6px 0;">
         <span><strong>{{ loc.name }}</strong></span>
         <button @click="deleteLocation(loc.id)" class="delete-btn">X</button>
       </div>
@@ -191,11 +191,10 @@
 </div>
 
 <script>
-  const { createApp, ref, computed, onMounted } = Vue;
+  const { createApp, ref, computed, onMounted, watch } = Vue;
   
-  // Die Zugangsdaten sind jetzt fest eingebaut. Nichts verändern!
   const SUPABASE_URL = 'https://surahqdtngncozholytm.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cmFocWR0bmduY296aG9seXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjE4MTMsImV4cCI6MjA5NDkzNzgxM30.m3UWMIOogodwIoxoZgu32NgTY_SsGgL1HQNKD0v1Haw';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBCaFlmFzZSIsInJlZiI6InN1cmFocWR0bmduY296aG9seXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjE4MTMsImV4cCI6MjA5NDkzNzgxM30.m3UWMIOogodwIoxoZgu32NgTY_SsGgL1HQNKDOv1Haw';
   
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -223,6 +222,17 @@
       const newAircraftCat = ref('Jet');
       const newLocationName = ref('');
 
+      // Formular zurücksetzen, wenn der Pilot gewechselt wird
+      watch(selectedPilotId, () => {
+        selectedAircraftId.value = null;
+        selectedLocation.value = '';
+        takeoffTime.value = '';
+        landingTime.value = '';
+        batteryFuel.value = '';
+        notes.value = '';
+        weather.value = { condition: '', temperature: null, windspeed: null };
+      });
+
       onMounted(async () => {
         const { data: pilotData, error: pilotErr } = await supabaseClient.from('pilots').select('*');
         if (pilotErr) alert("Fehler beim Laden der Piloten: " + pilotErr.message);
@@ -238,7 +248,11 @@
         if (flightData) flights.value = flightData;
       });
 
+      // Isolierte Ansichten je Pilot
       const activePilotFlights = computed(() => flights.value.filter(f => f.pilot_id === selectedPilotId.value));
+      const activePilotAircrafts = computed(() => aircrafts.value.filter(a => a.pilot_id === selectedPilotId.value));
+      const activePilotLocations = computed(() => locations.value.filter(l => l.pilot_id === selectedPilotId.value));
+
       const formatMinutesToHours = (totalMins) => {
         if (!totalMins || totalMins === 0) return '0h 0m';
         return `${Math.floor(totalMins / 60)}h ${totalMins % 60}m`;
@@ -251,7 +265,7 @@
 
       const aircraftStats = computed(() => {
         const stats = {};
-        aircrafts.value.forEach(a => { stats[a.id] = { name: a.name, totalMins: 0 }; });
+        activePilotAircrafts.value.forEach(a => { stats[a.id] = { name: a.name, totalMins: 0 }; });
         activePilotFlights.value.forEach(f => {
           if (f.aircraft_id && stats[f.aircraft_id]) {
             stats[f.aircraft_id].totalMins += (f.flight_duration || 0);
@@ -285,7 +299,8 @@
 
       const addLocation = async () => {
         if (!newLocationName.value) return;
-        const newLoc = { name: newLocationName.value, latitude: 0, longitude: 0 };
+        // Flugplatz wird jetzt explizit dem ausgewählten Piloten zugeordnet
+        const newLoc = { pilot_id: selectedPilotId.value, name: newLocationName.value, latitude: 0, longitude: 0 };
         const { data, error } = await supabaseClient.from('locations').insert([newLoc]).select();
         if (data) { locations.value.push(data[0]); newLocationName.value = ''; }
       };
@@ -375,7 +390,7 @@
         activeTab, pilots, selectedPilotId, locations, aircrafts, selectedLocation, selectedAircraftId, takeoffTime, landingTime, flightType,
         batteryFuel, notes, weather, isFetchingWeather, fetchLiveWeather, setTakeoffNow, setLandingNow, calculatedDuration,
         isFormValid, saveFlight, newAircraftName, newAircraftCat, newLocationName, addAircraft, addLocation, deleteAircraft, deleteLocation,
-        totalFlightTimeFormatted, aircraftStats
+        totalFlightTimeFormatted, aircraftStats, activePilotAircrafts, activePilotLocations
       };
     }
   }).mount('#app');
