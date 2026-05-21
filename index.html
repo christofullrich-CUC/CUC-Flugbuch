@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Flugbuch</title>
+  
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { margin: 0; background-color: #000000; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    * { box-sizing: border-box; }
+    .app-container { padding: 20px; max-width: 600px; margin: 0 auto; padding-bottom: 80px; }
+    .app-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #1C1C1E; padding-bottom: 15px; }
+    h1 { font-size: 24px; font-weight: 600; margin: 0; }
+    .pilot-select { background: #1C1C1E; color: #FF6B00; border: 1px solid #2C2C2E; padding: 6px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; outline: none; cursor: pointer; }
+    .tab-nav { display: flex; gap: 10px; margin-bottom: 30px; }
+    .tab-btn { flex: 1; padding: 12px; background: #1C1C1E; color: #8E8E93; border: 1px solid #2C2C2E; border-radius: 8px; font-size: 14px; cursor: pointer; text-align: center; font-weight: 600; }
+    .tab-btn.active { background: #FF6B00; color: #FFFFFF; border-color: #FF6B00; }
+    .form-section { margin-bottom: 24px; display: flex; flex-direction: column; }
+    label { font-size: 12px; color: #8E8E93; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .input-field { background-color: #1C1C1E; border: 1px solid #2C2C2E; color: #FFFFFF; padding: 14px; border-radius: 8px; font-size: 16px; outline: none; width: 100%; }
+    
+    .weather-widget { margin-top: 10px; background: #1C1C1E; padding: 12px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px; border-left: 3px solid #FF6B00; font-size: 14px; }
+    .weather-btn { background: #2C2C2E; color: #FFFFFF; border: none; padding: 10px; border-radius: 8px; cursor: pointer; margin-top: 10px; font-weight: 600; }
+    
+    .aircraft-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .aircraft-card { background: #1C1C1E; border: 1px solid #2C2C2E; padding: 16px; border-radius: 8px; cursor: pointer; }
+    .aircraft-card.active { border-color: #FF6B00; background: #2C2C2E; }
+    .aircraft-name { font-weight: 600; font-size: 16px; }
+    .aircraft-cat { font-size: 12px; color: #8E8E93; margin-top: 4px; }
+    .time-section { display: flex; flex-direction: column; gap: 16px; }
+    .time-block { position: relative; }
+    .btn-secondary { position: absolute; right: 8px; top: 35px; background: #2C2C2E; border: none; color: #FFFFFF; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .duration-display { background: #2C2C2E; padding: 12px; border-radius: 8px; text-align: center; font-size: 16px; color: #FF6B00; margin-top: 10px; font-weight: 600; }
+    .row-layout { display: flex; gap: 16px; }
+    .row-layout > div { flex: 1; }
+    textarea.input-field { min-height: 80px; resize: vertical; }
+    .btn-primary { background-color: #FF6B00; color: #FFFFFF; border: none; padding: 16px; border-radius: 8px; font-size: 16px; font-weight: 600; width: 100%; cursor: pointer; margin-top: 20px; }
+    .btn-primary:disabled { background-color: #3A3A3C; color: #8E8E93; cursor: not-allowed; }
+    
+    .settings-card { background: #1C1C1E; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #2C2C2E; }
+    .settings-card h3 { margin-top: 0; border-bottom: 1px solid #2C2C2E; padding-bottom: 10px; margin-bottom: 15px; font-size: 18px; }
+    .stat-total { background: #2C2C2E; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px; border: 1px solid #FF6B00; }
+    .stat-total span { display: block; font-size: 12px; color: #8E8E93; text-transform: uppercase; margin-bottom: 5px; }
+    .stat-total strong { font-size: 28px; color: #FF6B00; }
+    .list-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2C2C2E; align-items: center; }
+    .list-item-title { font-weight: 600; font-size: 16px; }
+    .list-item-value { font-size: 16px; color: #FFFFFF; background: #2C2C2E; padding: 4px 10px; border-radius: 6px; }
+    .delete-btn { background: rgba(255, 59, 48, 0.1); color: #FF3B30; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-left: 10px;}
+    .add-btn { background: #2C2C2E; color: white; border: none; padding: 12px; border-radius: 6px; width: 100%; margin-top: 15px; cursor: pointer; font-weight: 600;}
+  </style>
+</head>
+<body>
+
+<div id="app" class="app-container">
+  
+  <header class="app-header">
+    <h1>Flugbuch</h1>
+    <select v-model="selectedPilotId" class="pilot-select">
+      <option v-for="p in pilots" :key="p.id" :value="p.id">👤 {{ p.name }}</option>
+    </select>
+  </header>
+
+  <div class="tab-nav">
+    <div class="tab-btn" :class="{ active: activeTab === 'flight' }" @click="activeTab = 'flight'">Neuer Flug</div>
+    <div class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">Statistik & Hangar</div>
+  </div>
+
+  <div v-if="activeTab === 'flight'">
+    <form @submit.prevent="saveFlight">
+      <div class="form-section">
+        <label>Flugplatz</label>
+        <select v-model="selectedLocation" class="input-field">
+          <option value="" disabled>Platz auswählen...</option>
+          <option v-for="loc in locations" :key="loc.id" :value="loc">{{ loc.name }}</option>
+        </select>
+        
+        <button type="button" @click="fetchLiveWeather" class="weather-btn">
+          {{ isFetchingWeather ? 'Lädt...' : '📍 Wetter am Standort abrufen' }}
+        </button>
+        
+        <div v-if="weather.condition" class="weather-widget">
+          <span>🌤️</span>
+          <span>{{ weather.condition }} | {{ weather.temperature }}°C | Wind: {{ weather.windspeed }} km/h</span>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label>Fluggerät</label>
+        <div class="aircraft-grid">
+          <div v-for="air in aircrafts" :key="air.id" 
+               :class="['aircraft-card', { active: selectedAircraftId === air.id }]" 
+               @click="selectedAircraftId = air.id">
+            <div class="aircraft-name">{{ air.name }}</div>
+            <div class="aircraft-cat">{{ air.category }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section time-section">
+        <div class="time-block">
+          <label>Startzeit</label>
+          <input type="datetime-local" v-model="takeoffTime" class="input-field" />
+          <button type="button" @click="setTakeoffNow" class="btn-secondary">Jetzt</button>
+        </div>
+        <div class="time-block">
+          <label>Landezeit</label>
+          <input type="datetime-local" v-model="landingTime" class="input-field" />
+          <button type="button" @click="setLandingNow" class="btn-secondary">Jetzt</button>
+        </div>
+        <div v-if="calculatedDuration !== null" class="duration-display">
+          Flugzeit: {{ calculatedDuration }} Minuten
+        </div>
+      </div>
+
+      <div class="form-section row-layout">
+        <div>
+          <label>Flugtyp</label>
+          <select v-model="flightType" class="input-field">
+            <option value="Training">Training</option>
+            <option value="Wettbewerb">Wettbewerb</option>
+            <option value="Schlepp">Schleppflug</option>
+            <option value="Hubschrauber">Hubschrauber</option>
+          </select>
+        </div>
+        <div>
+          <label>Verbrauch</label>
+          <input type="text" v-model="batteryFuel" placeholder="z.B. 4000 mAh" class="input-field" />
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label>Notizen</label>
+        <textarea v-model="notes" placeholder="Trimmung, Wind..." class="input-field"></textarea>
+      </div>
+
+      <button type="submit" class="btn-primary" :disabled="!isFormValid">Flug loggen</button>
+    </form>
+  </div>
+
+  <div v-if="activeTab === 'settings'">
+    <div class="settings-card">
+      <h3>Flugstatistik</h3>
+      <div class="stat-total">
+        <span>Gesamt-Flugzeit</span>
+        <strong>{{ totalFlightTimeFormatted }}</strong>
+      </div>
+      
+      <label style="margin-top: 15px; display:block;">Flugstunden je Modell</label>
+      <div v-if="aircraftStats.length === 0" style="color: #8E8E93; font-size: 14px; margin-top: 5px;">Noch keine Flüge erfasst.</div>
+      <div v-for="stat in aircraftStats" :key="stat.name" class="list-item">
+        <span class="list-item-title">{{ stat.name }}</span>
+        <span class="list-item-value">{{ stat.formattedTime }}</span>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Mein Hangar</h3>
+      <div v-for="air in aircrafts" :key="air.id" class="list-item" style="padding: 6px 0;">
+        <span><strong>{{ air.name }}</strong> ({{ air.category }})</span>
+        <button @click="deleteAircraft(air.id)" class="delete-btn">X</button>
+      </div>
+      <div style="margin-top: 15px; display: flex; gap: 10px;">
+        <input type="text" v-model="newAircraftName" placeholder="Name (z.B. JMB SL Viper)" class="input-field" style="padding: 10px;" />
+        <select v-model="newAircraftCat" class="input-field" style="padding: 10px;">
+          <option value="Jet">Jet</option>
+          <option value="Schlepp">Schlepp</option>
+          <option value="Motor">Motor</option>
+          <option value="Segler">Segler</option>
+          <option value="Hubschrauber">Hubschrauber</option>
+        </select>
+      </div>
+      <button @click="addAircraft" class="add-btn" :disabled="!newAircraftName">+ Modell hinzufügen</button>
+    </div>
+
+    <div class="settings-card">
+      <h3>Meine Flugplätze</h3>
+      <div v-for="loc in locations" :key="loc.id" class="list-item" style="padding: 6px 0;">
+        <span><strong>{{ loc.name }}</strong></span>
+        <button @click="deleteLocation(loc.id)" class="delete-btn">X</button>
+      </div>
+      <div style="margin-top: 15px;">
+        <input type="text" v-model="newLocationName" placeholder="Name (z.B. MFG Sierning)" class="input-field" style="padding: 10px;" />
+      </div>
+      <button @click="addLocation" class="add-btn" :disabled="!newLocationName">+ Flugplatz hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const { createApp, ref, computed, onMounted } = Vue;
+  
+  // Die Zugangsdaten sind jetzt fest eingebaut. Nichts verändern!
+  const SUPABASE_URL = 'https://surahqdtngncozholytm.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cmFocWR0bmduY296aG9seXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjE4MTMsImV4cCI6MjA5NDkzNzgxM30.m3UWMIOogodwIoxoZgu32NgTY_SsGgL1HQNKD0v1Haw';
+  
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  createApp({
+    setup() {
+      const activeTab = ref('flight');
+      const pilots = ref([]);
+      const selectedPilotId = ref('');
+      const locations = ref([]);
+      const aircrafts = ref([]);
+      const flights = ref([]);
+      
+      const selectedLocation = ref('');
+      const selectedAircraftId = ref(null);
+      const takeoffTime = ref('');
+      const landingTime = ref('');
+      const flightType = ref('Training');
+      const batteryFuel = ref('');
+      const notes = ref('');
+      
+      const weather = ref({ condition: '', temperature: null, windspeed: null });
+      const isFetchingWeather = ref(false);
+
+      const newAircraftName = ref('');
+      const newAircraftCat = ref('Jet');
+      const newLocationName = ref('');
+
+      onMounted(async () => {
+        const { data: pilotData, error: pilotErr } = await supabaseClient.from('pilots').select('*');
+        if (pilotErr) alert("Fehler beim Laden der Piloten: " + pilotErr.message);
+        if (pilotData && pilotData.length > 0) { pilots.value = pilotData; selectedPilotId.value = pilotData[0].id; }
+
+        const { data: locData } = await supabaseClient.from('locations').select('*');
+        if (locData) locations.value = locData;
+
+        const { data: airData } = await supabaseClient.from('aircrafts').select('*').eq('status', 'Einsatzbereit');
+        if (airData) aircrafts.value = airData;
+
+        const { data: flightData } = await supabaseClient.from('flights').select('*');
+        if (flightData) flights.value = flightData;
+      });
+
+      const activePilotFlights = computed(() => flights.value.filter(f => f.pilot_id === selectedPilotId.value));
+      const formatMinutesToHours = (totalMins) => {
+        if (!totalMins || totalMins === 0) return '0h 0m';
+        return `${Math.floor(totalMins / 60)}h ${totalMins % 60}m`;
+      };
+
+      const totalFlightTimeFormatted = computed(() => {
+        const totalMins = activePilotFlights.value.reduce((sum, f) => sum + (f.flight_duration || 0), 0);
+        return formatMinutesToHours(totalMins);
+      });
+
+      const aircraftStats = computed(() => {
+        const stats = {};
+        aircrafts.value.forEach(a => { stats[a.id] = { name: a.name, totalMins: 0 }; });
+        activePilotFlights.value.forEach(f => {
+          if (f.aircraft_id && stats[f.aircraft_id]) {
+            stats[f.aircraft_id].totalMins += (f.flight_duration || 0);
+          }
+        });
+        return Object.values(stats).map(s => ({
+          name: s.name, formattedTime: formatMinutesToHours(s.totalMins), rawMins: s.totalMins
+        })).sort((a, b) => b.rawMins - a.rawMins);
+      });
+
+      const deleteAircraft = async (id) => {
+        if (!confirm("Möchtest du dieses Modell wirklich löschen?")) return;
+        const { error } = await supabaseClient.from('aircrafts').delete().eq('id', id);
+        if (error) alert("Fehler beim Löschen: " + error.message);
+        else aircrafts.value = aircrafts.value.filter(a => a.id !== id);
+      };
+
+      const deleteLocation = async (id) => {
+        if (!confirm("Möchtest du diesen Flugplatz wirklich löschen?")) return;
+        const { error } = await supabaseClient.from('locations').delete().eq('id', id);
+        if (error) alert("Fehler beim Löschen: " + error.message);
+        else locations.value = locations.value.filter(l => l.id !== id);
+      };
+
+      const addAircraft = async () => {
+        if (!newAircraftName.value) return;
+        const newAir = { pilot_id: selectedPilotId.value, name: newAircraftName.value, category: newAircraftCat.value, status: 'Einsatzbereit' };
+        const { data, error } = await supabaseClient.from('aircrafts').insert([newAir]).select();
+        if (data) { aircrafts.value.push(data[0]); newAircraftName.value = ''; }
+      };
+
+      const addLocation = async () => {
+        if (!newLocationName.value) return;
+        const newLoc = { name: newLocationName.value, latitude: 0, longitude: 0 };
+        const { data, error } = await supabaseClient.from('locations').insert([newLoc]).select();
+        if (data) { locations.value.push(data[0]); newLocationName.value = ''; }
+      };
+
+      const fetchLiveWeather = () => {
+        if (!navigator.geolocation) {
+          alert("Dein Browser unterstützt leider keine Standorterfassung.");
+          return;
+        }
+        isFetchingWeather.value = true;
+        
+        navigator.geolocation.getCurrentPosition(async (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          try {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+            const data = await res.json();
+            const current = data.current_weather;
+            
+            let cond = "Bewölkt";
+            if (current.weathercode <= 1) cond = "Sonnig/Klar";
+            else if (current.weathercode <= 3) cond = "Heiter";
+            else if (current.weathercode >= 51 && current.weathercode <= 65) cond = "Regen";
+            else if (current.weathercode >= 71) cond = "Schnee/Schauer";
+
+            weather.value = { 
+              condition: cond, 
+              temperature: Math.round(current.temperature),
+              windspeed: Math.round(current.windspeed)
+            };
+          } catch (error) {
+            alert("Wetter konnte nicht abgerufen werden. Bitte Internetverbindung prüfen.");
+          } finally {
+            isFetchingWeather.value = false;
+          }
+        }, (error) => {
+          alert("Standort konnte nicht ermittelt werden. Bitte GPS aktivieren und dem Browser die Berechtigung erteilen.");
+          isFetchingWeather.value = false;
+        });
+      };
+
+      const formatDateTimeLocal = (date) => {
+        const offset = date.getTimezoneOffset();
+        return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+      };
+
+      const setTakeoffNow = () => takeoffTime.value = formatDateTimeLocal(new Date());
+      const setLandingNow = () => landingTime.value = formatDateTimeLocal(new Date());
+
+      const calculatedDuration = computed(() => {
+        if (!takeoffTime.value || !landingTime.value) return null;
+        const diffMs = new Date(landingTime.value) - new Date(takeoffTime.value);
+        return diffMs < 0 ? 0 : Math.round(diffMs / 60000);
+      });
+
+      const isFormValid = computed(() => selectedLocation.value && selectedAircraftId.value && takeoffTime.value && landingTime.value && calculatedDuration.value > 0);
+
+      const saveFlight = async () => {
+        if (!isFormValid.value) return;
+        const flightData = {
+          pilot_id: selectedPilotId.value,
+          aircraft_id: selectedAircraftId.value,
+          location_id: selectedLocation.value.id,
+          takeoff_time: new Date(takeoffTime.value).toISOString(),
+          landing_time: new Date(landingTime.value).toISOString(),
+          flight_duration: calculatedDuration.value,
+          flight_type: flightType.value,
+          battery_fuel_used: batteryFuel.value || null,
+          weather_condition: weather.value.condition ? `${weather.value.condition}, ${weather.value.windspeed}km/h Wind` : null,
+          temperature: weather.value.temperature || null,
+          notes: notes.value || null
+        };
+
+        const { data, error } = await supabaseClient.from('flights').insert([flightData]).select();
+
+        if (error) { 
+          alert('Fehler: Flug konnte nicht gespeichert werden. ' + error.message); 
+        } else {
+          if (data && data.length > 0) flights.value.push(data[0]);
+          alert('Erfolg! Flugbuch-Eintrag für ' + calculatedDuration.value + ' Minuten wurde gespeichert!');
+          selectedAircraftId.value = null; takeoffTime.value = ''; landingTime.value = ''; batteryFuel.value = ''; notes.value = '';
+          weather.value = { condition: '', temperature: null, windspeed: null }; selectedLocation.value = '';
+        }
+      };
+
+      return {
+        activeTab, pilots, selectedPilotId, locations, aircrafts, selectedLocation, selectedAircraftId, takeoffTime, landingTime, flightType,
+        batteryFuel, notes, weather, isFetchingWeather, fetchLiveWeather, setTakeoffNow, setLandingNow, calculatedDuration,
+        isFormValid, saveFlight, newAircraftName, newAircraftCat, newLocationName, addAircraft, addLocation, deleteAircraft, deleteLocation,
+        totalFlightTimeFormatted, aircraftStats
+      };
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>
